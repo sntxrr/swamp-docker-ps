@@ -1,0 +1,23 @@
+manifestVersion: 1
+
+name: "@sntxrr/docker-ps"
+version: "2026.10.22.1"
+description: "A read-only container listing of a Docker host over SSH, narrow enough to hand to an unattended triage agent. It answers the first question an alert usually raises -- what is running on that host, and which container holds that port -- with name, image, state, status, published ports and creation time per container. It runs `docker ps` with an explicit, per-field `--format` template and rebuilds each row from those fields alone, so no environment variable and no label value ever leaves the host: `docker inspect` returns every container's environment, which is where compose files keep database passwords and API tokens, and `docker ps --format '{{json .}}'` includes the Labels field. The type has exactly one method and no free-form command or format argument, so a model instance exposes no write verb at all. Host key checking stays on by default."
+repository: "https://github.com/sntxrr/swamp-docker-ps"
+license: MIT
+
+models:
+  - docker_ps.ts
+
+additionalFiles:
+  - README.md
+  - LICENSE.md
+
+labels:
+  - docker
+  - containers
+  - read-only
+  - triage
+  - observability
+  - homelab
+  - self-hosted
