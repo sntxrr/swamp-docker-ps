@@ -1,4 +1,9 @@
-import { assert, assertEquals, assertFalse } from "jsr:@std/assert@1";
+import {
+  assert,
+  assertEquals,
+  assertFalse,
+  assertRejects,
+} from "jsr:@std/assert@1";
 import {
   model,
   parsePorts,
@@ -168,4 +173,87 @@ Deno.test("ssh host and user refuse anything ssh could read as an option", async
   assert(SSH_USER_RE.test("ops"));
   assertFalse(SSH_USER_RE.test("-l"));
   assertFalse(SSH_USER_RE.test("a b"));
+});
+
+// --- execute: ssh is stubbed, nothing leaves the test ----------------------
+
+async function runPs(
+  code: number,
+  stdout: string,
+  stderr = "",
+  writes: unknown[] = [],
+): Promise<{ result: unknown; writes: unknown[]; argv: string[] }> {
+  let argv: string[] = [];
+  const real = Deno.Command;
+  // deno-lint-ignore no-explicit-any
+  (Deno as any).Command = class {
+    constructor(cmd: string, opts: { args: string[] }) {
+      argv = [cmd, ...opts.args];
+    }
+    output() {
+      const enc = new TextEncoder();
+      return Promise.resolve({
+        code,
+        stdout: enc.encode(stdout),
+        stderr: enc.encode(stderr),
+      });
+    }
+  };
+  try {
+    const result = await model.methods.ps.execute({ all: true }, {
+      globalArgs: {
+        sshHost: "host.example.com",
+        sshUser: "ops",
+        strictHostKeyChecking: "accept-new",
+      },
+      logger: { info: () => {} },
+      writeResource: (_r, _i, attrs) => {
+        writes.push(attrs);
+        return Promise.resolve();
+      },
+    });
+    return { result, writes, argv };
+  } finally {
+    // deno-lint-ignore no-explicit-any
+    (Deno as any).Command = real;
+  }
+}
+
+Deno.test("ps writes the parsed listing once", async () => {
+  const line = JSON.stringify({
+    id: "0123456789abcdef",
+    name: "web",
+    image: "nginx:1",
+    state: "running",
+    status: "Up 2 hours",
+    ports: "0.0.0.0:8080->80/tcp",
+    createdAt: "2026-10-01 00:00:00 +0000 UTC",
+  });
+  const { writes, argv } = await runPs(0, line + "\n");
+  assertEquals(argv[0], "ssh");
+  assert(argv.includes("ops@host.example.com"));
+  assertEquals(writes.length, 1);
+  const w = writes[0] as { count: number; running: number };
+  assertEquals(w.count, 1);
+  assertEquals(w.running, 1);
+});
+
+Deno.test("ps throws on ssh failure and writes nothing", async () => {
+  const writes: unknown[] = [];
+  await assertRejects(
+    () => runPs(255, "", "Permission denied (publickey).", writes),
+    Error,
+    "exit 255",
+  );
+  assertEquals(writes.length, 0);
+});
+
+Deno.test("ps refuses output it cannot parse rather than report an empty host", async () => {
+  const writes: unknown[] = [];
+  await assertRejects(
+    () => runPs(0, "Cannot connect to the Docker daemon\n", "", writes),
+    Error,
+    "no row parsed",
+  );
+  assertEquals(writes.length, 0);
 });

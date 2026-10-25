@@ -234,7 +234,14 @@ export const model = {
   type: "@sntxrr/docker-ps/host",
   description:
     "Read-only container listing of a Docker host over SSH: name, image, state, status, published ports and creation time. Uses `docker ps` with an explicit field list only, so no environment variables or label values ever leave the host. Has no write method.",
-  version: "2026.10.22.1",
+  version: "2026.10.25.1",
+  upgrades: [
+    {
+      toVersion: "2026.10.25.1",
+      description: "Version bump, no schema changes",
+      upgradeAttributes: (old: Record<string, unknown>) => old,
+    },
+  ],
   globalArguments: GlobalArgsSchema,
   resources: {
     containers: {
@@ -257,7 +264,13 @@ export const model = {
       execute: async (args: { all: boolean }, context: Context) => {
         const g = context.globalArgs;
         const command = psCommand(args.all);
-        // @ts-ignore - Deno is provided by the swamp extension runtime
+        context.logger.info("{host}: listing containers (all={all})", {
+          host: g.sshHost,
+          all: args.all,
+        });
+        // ssh is the transport: host and user are regex-validated (SSH_HOST_RE,
+        // SSH_USER_RE) and the remote command is fixed (psCommand).
+        // swamp-quality-ignore deno-command
         const proc = new Deno.Command("ssh", {
           args: sshArgs(g.sshHost, g.sshUser, command, {
             strictHostKeyChecking: g.strictHostKeyChecking,
